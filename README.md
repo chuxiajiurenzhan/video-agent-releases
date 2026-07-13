@@ -13,4 +13,3 @@ The application source code, server code, environment files, credentials, API ke
 ## Publishing
 
 Releases are uploaded as drafts from the private build workspace. A draft becomes visible to desktop clients only after it is reviewed and published on GitHub.
-
