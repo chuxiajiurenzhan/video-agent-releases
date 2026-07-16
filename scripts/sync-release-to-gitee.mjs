@@ -47,7 +47,7 @@ if (!release) {
       `安装包：${installerName}`,
       `SHA-256：${installerSha256}`,
     ].join("\n"),
-    target_commitish: "main",
+    target_commitish: "master",
     prerelease: String(prerelease),
   });
   release = await giteeRequest(`${apiRoot}/releases`, { method: "POST", body });
