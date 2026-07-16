@@ -29,7 +29,7 @@ jobs:
       GITEE_REPO: video-agent-releases
       SOURCE_ARTIFACT_DIR: github-artifacts
       MIRROR_ARTIFACT_DIR: gitee-artifacts
-      GITEE_PART_SIZE_BYTES: "25000000"
+      GITEE_PART_SIZE_BYTES: "10000000"
 
     steps:
       - name: Check out release repository
