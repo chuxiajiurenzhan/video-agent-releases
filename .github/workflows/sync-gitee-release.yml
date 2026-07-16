@@ -19,15 +19,16 @@ concurrency:
 
 jobs:
   sync:
-    name: Mirror release assets
+    name: Mirror latest release
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       GH_TOKEN: ${{ github.token }}
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
       GITEE_OWNER: chuxiajiurenzhan
       GITEE_REPO: video-agent-releases
-      ARTIFACT_DIR: artifacts
+      SOURCE_ARTIFACT_DIR: github-artifacts
+      MIRROR_ARTIFACT_DIR: gitee-artifacts
 
     steps:
       - name: Check out release repository
@@ -53,8 +54,30 @@ jobs:
 
       - name: Download GitHub release assets
         run: |
-          mkdir -p "$ARTIFACT_DIR"
-          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$ARTIFACT_DIR"
+          mkdir -p "$SOURCE_ARTIFACT_DIR"
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$SOURCE_ARTIFACT_DIR"
 
-      - name: Sync assets to Gitee
+      - name: Prepare Gitee mirror parts
+        run: node scripts/prepare-gitee-mirror.mjs
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Build Windows mirror downloader
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          MANIFEST_NAME="YingJiStudio-Setup-${VERSION}-x64.gitee.json"
+          MANIFEST_URL="https://gitee.com/$GITEE_OWNER/$GITEE_REPO/releases/download/$RELEASE_TAG/$MANIFEST_NAME"
+          DOWNLOADER="$MIRROR_ARTIFACT_DIR/YingJiStudio-Setup-${VERSION}-x64-Gitee-Downloader.exe"
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-s -w -X main.manifestURL=$MANIFEST_URL" \
+            -o "$DOWNLOADER" \
+            ./gitee-downloader/main.go
+
+      - name: Sync prepared assets to Gitee
+        env:
+          ARTIFACT_DIR: ${{ env.MIRROR_ARTIFACT_DIR }}
         run: node scripts/sync-release-to-gitee.mjs
