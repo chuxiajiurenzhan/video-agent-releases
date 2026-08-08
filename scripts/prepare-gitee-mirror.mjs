@@ -7,7 +7,7 @@ const owner = String(process.env.GITEE_OWNER || "chuxiajiurenzhan").trim();
 const repo = String(process.env.GITEE_REPO || "video-agent-releases").trim();
 const sourceDir = path.resolve(process.env.SOURCE_ARTIFACT_DIR || "artifacts");
 const outputDir = path.resolve(process.env.MIRROR_ARTIFACT_DIR || "gitee-artifacts");
-const partSize = Number(process.env.GITEE_PART_SIZE_BYTES || 90_000_000);
+const partSize = Number(process.env.GITEE_PART_SIZE_BYTES || 10_000_000);
 
 if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tagName)) {
   throw new Error(`无效的发行标签：${tagName}`);
