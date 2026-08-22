@@ -1,0 +1,103 @@
+name: Reconstruct draft installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft release tag to update, for example v0.2.7
+        required: true
+        type: string
+      base_tag:
+        description: Published release tag used as the byte source, for example v0.2.6
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconstruct-draft-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  reconstruct:
+    name: Reconstruct and verify installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out release repository
+        uses: actions/checkout@v4
+
+      - name: Resolve exact asset names
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_BASE_TAG: ${{ inputs.base_tag }}
+        run: |
+          [[ "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          [[ "$INPUT_BASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          test "$INPUT_TAG" != "$INPUT_BASE_TAG"
+          VERSION="${INPUT_TAG#v}"
+          BASE_VERSION="${INPUT_BASE_TAG#v}"
+          echo "RELEASE_TAG=$INPUT_TAG" >> "$GITHUB_ENV"
+          echo "BASE_TAG=$INPUT_BASE_TAG" >> "$GITHUB_ENV"
+          echo "TARGET_NAME=YingJiStudio-Setup-${VERSION}-x64.exe" >> "$GITHUB_ENV"
+          echo "BASE_NAME=YingJiStudio-Setup-${BASE_VERSION}-x64.exe" >> "$GITHUB_ENV"
+          echo "PATCH_NAME=YingJiStudio-Setup-${VERSION}-x64.exe.delta.bin" >> "$GITHUB_ENV"
+          echo "MANIFEST_NAME=YingJiStudio-Setup-${VERSION}-x64.exe.delta.json.gz" >> "$GITHUB_ENV"
+
+      - name: Require a draft target release
+        run: |
+          IS_DRAFT="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+          test "$IS_DRAFT" = "true"
+          BASE_IS_DRAFT="$(gh release view "$BASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
+          BASE_IS_PRERELEASE="$(gh release view "$BASE_TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq '.isPrerelease')"
+          test "$BASE_IS_DRAFT" = "false"
+          test "$BASE_IS_PRERELEASE" = "false"
+          RELEASE_ID="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId')"
+          test -n "$RELEASE_ID"
+          echo "RELEASE_ID=$RELEASE_ID" >> "$GITHUB_ENV"
+
+      - name: Download base and delta assets
+        run: |
+          mkdir -p staging
+          gh release download "$BASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$BASE_NAME" --dir staging
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$PATCH_NAME" --pattern "$MANIFEST_NAME" --dir staging
+
+      - name: Reconstruct and verify installer
+        run: |
+          node scripts/release-delta.mjs apply \
+            --base "staging/$BASE_NAME" \
+            --patch "staging/$PATCH_NAME" \
+            --manifest "staging/$MANIFEST_NAME" \
+            --output "staging/$TARGET_NAME"
+
+      - name: Upload reconstructed installer
+        run: |
+          CURRENT_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.tag_name')"
+          IS_DRAFT="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.draft')"
+          test "$CURRENT_TAG" = "$RELEASE_TAG"
+          test "$IS_DRAFT" = "true"
+          EXISTING_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq ".assets[] | select(.name == \"$TARGET_NAME\") | .id")"
+          test -z "$EXISTING_ID"
+          gh release upload "$RELEASE_TAG" "staging/$TARGET_NAME" --repo "$GITHUB_REPOSITORY"
+
+      - name: Verify remote digest and remove temporary delta assets
+        run: |
+          EXPECTED_SHA256="$(sha256sum "staging/$TARGET_NAME" | awk '{print $1}')"
+          REMOTE_DIGEST="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq ".assets[] | select(.name == \"$TARGET_NAME\") | .digest")"
+          REMOTE_SIZE="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq ".assets[] | select(.name == \"$TARGET_NAME\") | .size")"
+          LOCAL_SIZE="$(stat -c '%s' "staging/$TARGET_NAME")"
+          test "$REMOTE_DIGEST" = "sha256:$EXPECTED_SHA256"
+          test "$REMOTE_SIZE" = "$LOCAL_SIZE"
+          for TEMPORARY_NAME in "$PATCH_NAME" "$MANIFEST_NAME"; do
+            CURRENT_TAG="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.tag_name')"
+            IS_DRAFT="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '.draft')"
+            test "$CURRENT_TAG" = "$RELEASE_TAG"
+            test "$IS_DRAFT" = "true"
+            ASSET_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq ".assets[] | select(.name == \"$TEMPORARY_NAME\") | .id")"
+            test -n "$ASSET_ID"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID"
+          done
