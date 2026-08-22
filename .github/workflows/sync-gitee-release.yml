@@ -1,8 +1,7 @@
 name: Sync GitHub release to Gitee
 
 on:
-  release:
-    types: [published]
+  # Automatic mirroring is paused until remote attachment completeness is verified end to end.
   workflow_dispatch:
     inputs:
       tag:

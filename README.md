@@ -16,7 +16,7 @@ Releases are uploaded as drafts from the private build workspace. A draft become
 
 For constrained upload links, the `Reconstruct draft installer` workflow can rebuild an installer inside GitHub from the previous published installer plus a verified content-defined delta. The workflow rechecks the target draft before every mutation, validates asset names, base, patch, output size, and SHA-256, uploads the exact reconstructed installer, and removes the temporary delta assets. It never publishes the release.
 
-When a GitHub Release is published, the `Sync GitHub release to Gitee` workflow creates the mainland-China fallback in `chuxiajiurenzhan/video-agent-releases` on Gitee. GitHub remains the primary source, full release archive, and automatic-update endpoint.
+The automatic Gitee mirror is temporarily paused because the current upload path cannot yet verify a complete remote attachment set. GitHub remains the only published download source, full release archive, and automatic-update endpoint until the mirror is repaired and validated end to end. The `Sync GitHub release to Gitee` workflow is manual-only during this period.
 
 Because Gitee limits individual release attachments to 100 MB and total release attachments in a repository to 1 GB, the workflow splits the latest Windows installer into verified parts and builds a small one-click Windows downloader. The Gitee mirror intentionally keeps only the newest release; GitHub retains the complete release history.
 
